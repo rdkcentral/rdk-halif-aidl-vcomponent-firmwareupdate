@@ -50,7 +50,12 @@ namespace hal {
 namespace firmwareupdate {
 
 /**
- * @brief FirmwareUpdate binder service skeleton.
+ * @brief Binder implementation of the Firmware Update AIDL interface.
+ *
+ * The service validates a requested firmware-image path and drives the
+ * listener callback sequence. This virtual-device implementation deliberately
+ * does not flash firmware; a readable image completes successfully as a
+ * deterministic no-operation update.
  */
 class FirmwareUpdate final : public android::BinderService<FirmwareUpdate>, public BnFirmwareUpdate
 {
@@ -58,9 +63,16 @@ public:
     // PUBLIC_INTERFACE
     /**
      * @brief Construct a FirmwareUpdate skeleton service.
+     *
+     * Initializes the service in its idle state. The service may process one
+     * update request at a time.
      */
     FirmwareUpdate();
 
+    // PUBLIC_INTERFACE
+    /**
+     * @brief Destroy the Firmware Update service.
+     */
     ~FirmwareUpdate() override = default;
 
     FirmwareUpdate(const FirmwareUpdate&) = delete;
@@ -87,6 +99,16 @@ public:
      * a Binder exception indicates an invalid invocation, while a successful
      * Binder status with a true return value means the request was accepted for
      * processing and its final outcome is delivered through the listener.
+     *
+     * @param[in] filename Path to the firmware image. Leading and trailing
+     * whitespace is ignored before the file is opened.
+     * @param[in] listener Recipient of progress and completion callbacks. It
+     * must not be null.
+     * @param[out] _aidl_return Set to @c true when the request is accepted;
+     * set to @c false when another update is already active.
+     * @return @c android::binder::Status::ok() for a valid Binder transaction,
+     * including asynchronous image-validation failures. Returns
+     * @c EX_NULL_POINTER when @p listener or @p _aidl_return is null.
      */
     android::binder::Status updateFirmwareFromFile(
         const std::string& filename,

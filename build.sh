@@ -217,8 +217,6 @@ install_linux_binder()
 {
      echo "LINUX_BINDER_OUT_DIR=${LINUX_BINDER_OUT_DIR}"
 
-    popd >/dev/null
-
     install -d ${BUILD_INSTALL_PREFIX}/bin \
                ${BUILD_INSTALL_PREFIX}/lib/ \
                ${BUILD_INSTALL_PREFIX}/include

@@ -41,24 +41,50 @@ namespace rdk {
 namespace hal {
 namespace firmwareupdate {
 
+/**
+ * @brief Logging implementation of the Firmware Update listener interface.
+ *
+ * The forwarder currently records received AIDL callbacks. It provides an
+ * extension point for translating firmware-update events to middleware events.
+ */
 class FirmwareUpdateListenerForwarder final : public BnFirmwareUpdateListener
 {
 public:
     // PUBLIC_INTERFACE
     /**
-     * @brief Construct a forwarder.
+     * @brief Construct a listener callback forwarder.
      *
-     * @param[in] name A label used for logging/identification.
+     * @param[in] name Label used to identify callback log messages. An empty
+     * label is replaced with the component's default log prefix.
      */
     explicit FirmwareUpdateListenerForwarder(std::string name);
 
+    // PUBLIC_INTERFACE
+    /**
+     * @brief Destroy the listener callback forwarder.
+     */
     ~FirmwareUpdateListenerForwarder() override = default;
 
     FirmwareUpdateListenerForwarder(const FirmwareUpdateListenerForwarder&) = delete;
     FirmwareUpdateListenerForwarder& operator=(const FirmwareUpdateListenerForwarder&) = delete;
 
+    // PUBLIC_INTERFACE
+    /**
+     * @brief Receive firmware-update progress.
+     *
+     * @param[in] percentComplete Reported completion percentage.
+     * @return A successful Binder status after recording the callback.
+     */
     android::binder::Status onProgress(int32_t percentComplete) override;
 
+    // PUBLIC_INTERFACE
+    /**
+     * @brief Receive the terminal result of a firmware-update request.
+     *
+     * @param[in] result Firmware-update result reported by the service.
+     * @param[in] report Human-readable completion or failure detail.
+     * @return A successful Binder status after recording the callback.
+     */
     android::binder::Status onCompleted(
         FirmwareUpdateResult result,
         const std::string& report) override;

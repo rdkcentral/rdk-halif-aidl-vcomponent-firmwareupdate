@@ -19,6 +19,11 @@
 
 #pragma once
 
+/**
+ * @file vcomponent_FirmwareUpdate_Helper.h
+ * @brief String and file-reading helpers used by the Firmware Update service.
+ */
+
 #include <optional>
 #include <string>
 
@@ -26,18 +31,29 @@ namespace vcomponent {
 namespace utility {
 
 /**
+ * @namespace vcomponent::utility
+ * @brief Reusable implementation utilities for the virtual Firmware Update component.
+ */
+
+// PUBLIC_INTERFACE
+/**
  * @brief Trim leading/trailing whitespace.
  *
- * @param[in] s Input string.
- * @return Trimmed copy.
+ * @param[in] s Source string to normalize.
+ * @return A copy of @p s without leading or trailing characters for which
+ * @c std::isspace evaluates to true.
  */
 std::string trim(const std::string& s);
 
+// PUBLIC_INTERFACE
 /**
  * @brief Read an entire file into a string.
  *
- * @param[in] path File path.
- * @return Contents if readable; std::nullopt otherwise.
+ * The file is opened in binary mode so its contents are returned unchanged.
+ *
+ * @param[in] path Path of the file to read.
+ * @return The complete file contents when the file can be opened and read, or
+ * @c std::nullopt when it cannot be opened.
  */
 std::optional<std::string> readFileToString(const std::string& path);
 
