@@ -20,7 +20,7 @@
 #pragma once
 
 /**
- * @file vcomponent_FirmwareUpdate_Helper.h
+ * @file vcomponent_FirmwareUpdateHelper.h
  * @brief String and file-reading helpers used by the Firmware Update service.
  */
 
