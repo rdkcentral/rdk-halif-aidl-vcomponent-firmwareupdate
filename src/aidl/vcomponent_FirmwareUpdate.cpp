@@ -20,7 +20,7 @@
 #include "aidl/vcomponent_FirmwareUpdate.h"
 
 #include "common/logger.h"
-#include "utility/vcomponent_FirmwareUpdate_Helper.h"
+#include "utility/vcomponent_FirmwareUpdateHelper.h"
 
 #include <binder/Status.h>
 

@@ -21,7 +21,7 @@
 
 #include "common/logger.h"
 #include "service/vcomponent_FirmwareUpdateService.h"
-#include "utility/vcomponent_FirmwareUpdate_Helper.h"
+#include "utility/vcomponent_FirmwareUpdateHelper.h"
 
 #include <binder/ProcessState.h>
 #include <binder/IServiceManager.h>

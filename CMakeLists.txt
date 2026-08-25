@@ -117,7 +117,7 @@ message(STATUS "======================")
 set(FIRMWAREUPDATE_CORE_SOURCES
     src/aidl/vcomponent_FirmwareUpdate.cpp
     src/aidl/vcomponent_FirmwareUpdateListenerForwarder.cpp
-    src/utility/vcomponent_FirmwareUpdate_Helper.cpp
+    src/utility/vcomponent_FirmwareUpdateHelper.cpp
 )
 
 set(FIRMWAREUPDATE_SERVICE_SOURCES

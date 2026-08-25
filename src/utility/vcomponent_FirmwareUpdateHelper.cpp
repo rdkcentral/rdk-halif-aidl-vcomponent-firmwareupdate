@@ -17,7 +17,7 @@
  * limitations under the License.
  */
 
-#include "utility/vcomponent_FirmwareUpdate_Helper.h"
+#include "utility/vcomponent_FirmwareUpdateHelper.h"
 
 #include <algorithm>
 #include <cctype>
