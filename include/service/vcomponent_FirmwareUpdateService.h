@@ -20,7 +20,7 @@
 #pragma once
 
 /**
- * @file FirmwareUpdateServiceName.h
+ * @file vcomponent_FirmwareUpdateService.h
  * @brief Service-level helper for retrieving the canonical AIDL service name.
  *
  * This is intentionally kept out of the AIDL stub header to avoid mixing

@@ -24,6 +24,7 @@
 #include "utility/vcomponent_FirmwareUpdateHelper.h"
 
 #include <binder/ProcessState.h>
+#include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <string>
 
