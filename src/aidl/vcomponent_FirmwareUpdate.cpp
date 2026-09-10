@@ -74,6 +74,14 @@ FirmwareUpdate::FirmwareUpdate()
     LOGF_INFO("%s: Initialized FirmwareUpdate simulation service.", logPrefix);
 }
 
+FirmwareUpdate::~FirmwareUpdate()
+{
+    if (m_lifecycleWorker.joinable())
+    {
+        m_lifecycleWorker.join();
+    }
+}
+
 android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
     const std::string& filename,
     const android::sp<IFirmwareUpdateListener>& listener,
@@ -96,13 +104,19 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
     const std::string trimmedFilename = vcomponent::utility::trim(filename);
 
     // Admission and release are both protected so only one worker can own the
-    // simulated update lifecycle at any time.
+    // simulated update lifecycle at any time. A completed joinable worker is
+    // reclaimed before its thread object is reused for this request.
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_updateInProgress.load())
         {
             LOGF_INFO("%s: updateFirmwareFromFile: rejected (update already in progress)", logPrefix);
             return android::binder::Status::ok();
+        }
+
+        if (m_lifecycleWorker.joinable())
+        {
+            m_lifecycleWorker.join();
         }
 
         m_updateInProgress.store(true);
@@ -116,15 +130,16 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
 
     try
     {
-        // Capture all request-specific state by value. The worker retains this
-        // state until it attempts one terminal completion callback.
-        std::thread(
+        // Capture all request-specific state by value. The service owns the
+        // worker and joins it during destruction, preventing the worker from
+        // outliving access to this instance's synchronization state.
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lifecycleWorker = std::thread(
             &FirmwareUpdate::runUpdateLifecycle,
             this,
             trimmedFilename,
             listener,
-            scenario)
-            .detach();
+            scenario);
     }
     catch (const std::system_error& error)
     {

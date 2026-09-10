@@ -42,6 +42,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 
 namespace com {
 namespace rdk {
@@ -76,9 +77,12 @@ public:
 
     // PUBLIC_INTERFACE
     /**
-     * @brief Destroy the Firmware Update service.
+     * @brief Destroy the Firmware Update service after its active worker finishes.
+     *
+     * The service joins its owned lifecycle worker so no worker can access
+     * service synchronization state after the service is destroyed.
      */
-    ~FirmwareUpdate() override = default;
+    ~FirmwareUpdate() override;
 
     FirmwareUpdate(const FirmwareUpdate&) = delete;
     FirmwareUpdate& operator=(const FirmwareUpdate&) = delete;
@@ -180,6 +184,7 @@ private:
     static bool isValidScenario(const SimulationScenario& scenario);
 
     std::mutex m_mutex;
+    std::thread m_lifecycleWorker;
     std::atomic<bool> m_updateInProgress{false};
 };
 
