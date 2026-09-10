@@ -34,6 +34,9 @@ constexpr const char* logPrefix = "[VDEVICE_FIRMWAREUPDATE]<FirmwareUpdateServic
 
 int main(int argc, char** argv)
 {
+    LOGF_INFO("%s ===============================", logPrefix);
+    LOGF_INFO("%s FirmwareUpdate Service 0.1.0.", logPrefix);
+    LOGF_INFO("%s ===============================", logPrefix);
     LOGF_INFO(
         "%s: Starting FirmwareUpdate binder service (serviceName=%s)",
         logPrefix,
