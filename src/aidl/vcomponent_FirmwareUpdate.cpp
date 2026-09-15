@@ -223,21 +223,6 @@ void FirmwareUpdate::runUpdateLifecycle(
         return;
     }
 
-    // This simulation verifies only that the requested source can be opened.
-    // It deliberately does not inspect, copy, parse, verify, or persist bytes.
-    std::ifstream imageFile(filename, std::ios::in | std::ios::binary);
-    if (!imageFile.is_open())
-    {
-        LOGF_WARN(
-            "%s: runUpdateLifecycle: unable to open image file '%s'",
-            logPrefix,
-            filename.c_str());
-        complete(
-            FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
-            std::string("Unable to open firmware image file"));
-        return;
-    }
-
     // Future scenario delivery must provide a fully validated snapshot. Treat
     // any incompatible internal state as an actionable configuration failure
     // before simulated write progress begins.
