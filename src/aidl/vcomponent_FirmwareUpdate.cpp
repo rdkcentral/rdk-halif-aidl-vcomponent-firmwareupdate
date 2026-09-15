@@ -152,6 +152,17 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
             error.what());
         return android::binder::Status::fromExceptionCode(android::binder::Status::EX_ILLEGAL_STATE);
     }
+    catch (const std::exception& error)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_updateInProgress.store(false);
+
+        LOGF_ERR(
+            "%s: updateFirmwareFromFile: unable to construct lifecycle worker: %s",
+            logPrefix,
+            error.what());
+        return android::binder::Status::fromExceptionCode(android::binder::Status::EX_ILLEGAL_STATE);
+    }
 
     *_aidl_return = true;
     LOGF_INFO(
