@@ -235,7 +235,7 @@ void FirmwareUpdate::runUpdateLifecycle(
         return;
     }
 
-    // Pre-validation failures occur after real source-file validation and
+    // Pre-validation errors are reported
     // before any simulated write progress is emitted.
     if (scenario.stage == SimulationStage::PRE_VALIDATION
         && scenario.result != FirmwareUpdateResult::SUCCESS)
