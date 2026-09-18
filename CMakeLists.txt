@@ -172,6 +172,8 @@ endif()
 add_library(hal_aidl SHARED IMPORTED)
 set_target_properties(hal_aidl PROPERTIES IMPORTED_LOCATION "${HAL_AIDL_LIB}")
 
+find_package(Threads REQUIRED)
+
 # ----------------------
 # UT Control
 # ----------------------
@@ -242,6 +244,7 @@ target_include_directories(firmwareupdate_core PRIVATE
 target_link_libraries(firmwareupdate_core PUBLIC
     hal_aidl
     ut_control
+    Threads::Threads
 )
 
 set_target_properties(firmwareupdate_core PROPERTIES VERSION 1.0.0 SOVERSION 1)
