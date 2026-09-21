@@ -117,6 +117,7 @@ message(STATUS "======================")
 set(FIRMWAREUPDATE_CORE_SOURCES
     src/aidl/vcomponent_FirmwareUpdate.cpp
     src/aidl/vcomponent_FirmwareUpdateListenerForwarder.cpp
+    src/controller/vcomponent_FirmwareUpdateController.cpp
     src/utility/vcomponent_FirmwareUpdateHelper.cpp
 )
 
@@ -319,6 +320,10 @@ install(DIRECTORY ${PROJECT_INCLUDE_DIR}/aidl/
 
 install(DIRECTORY ${PROJECT_INCLUDE_DIR}/common/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/common
+        FILES_MATCHING PATTERN "*.h")
+
+install(DIRECTORY ${PROJECT_INCLUDE_DIR}/controller/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/controller
         FILES_MATCHING PATTERN "*.h")
 
 install(DIRECTORY ${PROJECT_INCLUDE_DIR}/service/

@@ -4,17 +4,17 @@
  *
  * Copyright 2026 RDK Management
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy
+ * of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
  */
 
 #include "aidl/vcomponent_FirmwareUpdate.h"
@@ -38,35 +38,6 @@ namespace firmwareupdate {
 namespace {
 constexpr const char* logPrefix = "[VDEVICE_FIRMWAREUPDATE]<FirmwareUpdate>";
 constexpr std::chrono::milliseconds kProgressDelay{25};
-
-const char* defaultReportForResult(FirmwareUpdateResult result)
-{
-    switch (result)
-    {
-        case FirmwareUpdateResult::ERROR_GENERAL:
-            return "Simulated firmware-update configuration failure.";
-        case FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL:
-            return "Simulated firmware image file open failure.";
-        case FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE:
-            return "Simulated invalid firmware image type.";
-        case FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE:
-            return "Simulated pre-update signature verification failure.";
-        case FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE:
-            return "Simulated invalid firmware image size.";
-        case FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT:
-            return "Simulated firmware image product mismatch.";
-        case FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED:
-            return "Simulated firmware image write failure.";
-        case FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED:
-            return "Simulated post-update verification failure.";
-        case FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED:
-            return "Simulated post-update signature verification failure.";
-        case FirmwareUpdateResult::SUCCESS:
-            return "";
-    }
-
-    return "Simulated firmware-update failure.";
-}
 } // namespace
 
 FirmwareUpdate::FirmwareUpdate()
@@ -102,10 +73,14 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
     }
 
     const std::string trimmedFilename = vcomponent::utility::trim(filename);
+    LOGF_DEBUG(
+        "%s: updateFirmwareFromFile request received (filenameLength=%zu)",
+        logPrefix,
+        trimmedFilename.size());
 
     // Admission and release are both protected so only one worker can own the
-    // simulated update lifecycle at any time. A completed joinable worker is
-    // reclaimed before its thread object is reused for this request.
+    // simulated update lifecycle at any time.
+    SimulationScenario scenario;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_updateInProgress.load())
@@ -119,20 +94,23 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
             m_lifecycleWorker.join();
         }
 
+
+        scenario = m_scenario;
         m_updateInProgress.store(true);
     }
 
-    // Control-plane scenario selection is intentionally not implemented. The
-    // worker still receives an immutable default snapshot so every documented
-    // lifecycle stage has explicit, deterministic handling once a future
-    // approved integration supplies a validated scenario.
-    const SimulationScenario scenario{};
+    LOGF_DEBUG(
+        "%s: updateFirmwareFromFile accepted for asynchronous execution "
+        "(scenarioStage=%d, scenarioResult=%d, hasConfigurationError=%s)",
+        logPrefix,
+        static_cast<int>(scenario.stage),
+        static_cast<int>(scenario.result),
+        scenario.configurationError.empty() ? "false" : "true");
 
     try
     {
-        // Capture all request-specific state by value. The service owns the
-        // worker and joins it during destruction, preventing the worker from
-        // outliving access to this instance's synchronization state.
+        // Capture all request-specific state by value. The worker retains this
+        // state and the service until it attempts terminal completion.
         std::lock_guard<std::mutex> lock(m_mutex);
         m_lifecycleWorker = std::thread(
             &FirmwareUpdate::runUpdateLifecycle,
@@ -152,6 +130,7 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
             error.what());
         return android::binder::Status::fromExceptionCode(android::binder::Status::EX_ILLEGAL_STATE);
     }
+
     catch (const std::exception& error)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -204,12 +183,25 @@ void FirmwareUpdate::runUpdateLifecycle(
     android::sp<IFirmwareUpdateListener> listener,
     SimulationScenario scenario)
 {
+    LOGF_DEBUG(
+        "%s: Firmware-update lifecycle worker started "
+        "(scenarioStage=%d, scenarioResult=%d)",
+        logPrefix,
+        static_cast<int>(scenario.stage),
+        static_cast<int>(scenario.result));
+
     const auto releaseActiveOperation = [this]() {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_updateInProgress.store(false);
+        LOGF_DEBUG("%s: Firmware-update lifecycle admission released.", logPrefix);
     };
 
     const auto complete = [&](FirmwareUpdateResult result, const std::string& report) {
+        LOGF_INFO(
+            "%s: Firmware-update lifecycle completing (result=%d, reportLength=%zu)",
+            logPrefix,
+            static_cast<int>(result),
+            report.size());
         const android::binder::Status callbackStatus = listener->onCompleted(result, report);
         if (!callbackStatus.isOk())
         {
@@ -223,40 +215,101 @@ void FirmwareUpdate::runUpdateLifecycle(
         releaseActiveOperation();
     };
 
+    const auto failForScenario = [&](SimulationStage stage,
+                                     FirmwareUpdateResult result,
+                                     const char* validationName) {
+        if (scenario.stage != stage || scenario.result != result)
+        {
+            return false;
+        }
+
+        LOGF_INFO(
+            "%s: %s failed by configured scenario (result=%d).",
+            logPrefix,
+            validationName,
+            static_cast<int>(result));
+        complete(result, scenario.report);
+        return true;
+    };
+
     // An empty path is accepted by Binder admission but fails source
     // pre-validation asynchronously, without progress notifications.
     if (filename.empty())
     {
-        LOGF_WARN("%s: runUpdateLifecycle: empty firmware image filename", logPrefix);
+        LOGF_WARN("%s: Source file open validation failed: empty firmware image filename.", logPrefix);
         complete(
             FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
             std::string("Unable to open firmware image file"));
         return;
     }
 
-    // Future scenario delivery must provide a fully validated snapshot. Treat
-    // any incompatible internal state as an actionable configuration failure
-    // before simulated write progress begins.
-    if (!isValidScenario(scenario))
+    // Source validation takes precedence over control-plane configuration.
+    // Invalid commands replace previous scenarios rather than selecting success.
+    if (!scenario.configurationError.empty() || !isValidScenario(scenario))
     {
-        LOGF_WARN("%s: runUpdateLifecycle: invalid simulation scenario", logPrefix);
+        LOGF_WARN("%s: Firmware-update scenario validation failed.", logPrefix);
         complete(
             FirmwareUpdateResult::ERROR_GENERAL,
-            std::string("Invalid firmware-update simulation scenario."));
+            scenario.configurationError.empty()
+                ? std::string("Invalid firmware-update simulation scenario.")
+                : scenario.configurationError);
         return;
     }
 
-    // Pre-validation errors are reported
-    // before any simulated write progress is emitted.
-    if (scenario.stage == SimulationStage::PRE_VALIDATION
-        && scenario.result != FirmwareUpdateResult::SUCCESS)
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_GENERAL,
+            "General pre-validation"))
     {
-        const std::string report = scenario.report.empty()
-            ? defaultReportForResult(scenario.result)
-            : scenario.report;
-        complete(scenario.result, report);
         return;
     }
+    
+
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
+            "Source file open validation"))
+    {
+        return;
+    }
+
+    LOGF_INFO("%s: Source file opened successfully.", logPrefix);
+
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE,
+            "Image type validation"))
+    {
+        return;
+    }
+    LOGF_INFO("%s: Image type validation passed.", logPrefix);
+
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE,
+            "Image signature validation"))
+    {
+        return;
+    }
+    LOGF_INFO("%s: Image signature validation passed.", logPrefix);
+
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE,
+            "Image-size validation"))
+    {
+        return;
+    }
+    LOGF_INFO("%s: Image-size validation passed.", logPrefix);
+
+    if (failForScenario(
+            SimulationStage::PRE_VALIDATION,
+            FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT,
+            "Product-compatibility validation"))
+    {
+        return;
+    }
+    LOGF_INFO("%s: Product-compatibility validation passed.", logPrefix);
 
     const auto reportProgress = [&](int32_t percentComplete) {
         const android::binder::Status callbackStatus = listener->onProgress(percentComplete);
@@ -272,34 +325,43 @@ void FirmwareUpdate::runUpdateLifecycle(
     // Generate a bounded, monotonic lifecycle. No image bytes are copied and
     // no target firmware file is created. A write-stage failure terminates
     // immediately after the 50 percent callback is attempted.
+    LOGF_INFO("%s: Simulated write started.", logPrefix);
     reportProgress(0);
     for (int32_t percentComplete = 10; percentComplete <= 100; percentComplete += 10)
     {
         std::this_thread::sleep_for(kProgressDelay);
         reportProgress(percentComplete);
 
-        if (percentComplete == 50 && scenario.stage == SimulationStage::WRITE)
+        if (percentComplete == 50
+            && failForScenario(
+                SimulationStage::WRITE,
+                FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED,
+                "Simulated write"))
         {
-            const std::string report = scenario.report.empty()
-                ? defaultReportForResult(scenario.result)
-                : scenario.report;
-            complete(scenario.result, report);
             return;
         }
     }
+    LOGF_INFO("%s: Simulated write completed.", logPrefix);
 
-    // Post-validation begins only after progress reaches 100 percent. It is a
-    // lifecycle boundary only: no read-back, signature check, or firmware
-    // verification is performed.
-    if (scenario.stage == SimulationStage::POST_VALIDATION)
+    if (failForScenario(
+            SimulationStage::POST_VALIDATION,
+            FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED,
+            "Post-write integrity validation"))
     {
-        const std::string report = scenario.report.empty()
-            ? defaultReportForResult(scenario.result)
-            : scenario.report;
-        complete(scenario.result, report);
         return;
     }
+    LOGF_INFO("%s: Post-write integrity validation passed.", logPrefix);
 
+    if (failForScenario(
+            SimulationStage::POST_VALIDATION,
+            FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED,
+            "Post-write signature validation"))
+    {
+        return;
+    }
+    LOGF_INFO("%s: Post-write signature validation passed.", logPrefix);
+
+    LOGF_INFO("%s: Firmware-update lifecycle completed successfully.", logPrefix);
     complete(FirmwareUpdateResult::SUCCESS, std::string());
 }
 

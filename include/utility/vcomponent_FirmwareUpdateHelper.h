@@ -24,6 +24,7 @@
  * @brief String and file-reading helpers used by the Firmware Update service.
  */
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -56,6 +57,39 @@ std::string trim(const std::string& s);
  * @c std::nullopt when it cannot be opened.
  */
 std::optional<std::string> readFileToString(const std::string& path);
+
+// PUBLIC_INTERFACE
+/**
+ * @brief Print Firmware Update service command-line usage.
+ *
+ * @param[in] programName Name used to invoke the service executable.
+ */
+void printUsage(const char* programName);
+
+// PUBLIC_INTERFACE
+/**
+ * @brief Parse a numeric TCP port value.
+ *
+ * @param[in] value Null-terminated decimal port value.
+ * @param[out] port Parsed port number when parsing succeeds.
+ * @return @c true when @p value is a complete decimal value in the range
+ * 1 through 65535; otherwise @c false.
+ */
+bool parsePort(const char* value, uint16_t* port);
+
+// PUBLIC_INTERFACE
+/**
+ * @brief Parse Firmware Update service command-line arguments.
+ *
+ * Supports @c --port <port_number> and @c --help / @c -h. The control-plane
+ * port defaults to 8087 when no port argument is supplied.
+ *
+ * @param[in] argc Number of command-line arguments.
+ * @param[in] argv Command-line argument vector.
+ * @param[out] port Parsed or defaulted control-plane port.
+ * @return @c true when the arguments are valid; otherwise @c false.
+ */
+bool parseArguments(int argc, char** argv, uint16_t* port);
 
 } // namespace utility
 } // namespace vcomponent

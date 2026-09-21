@@ -39,6 +39,8 @@
 #include <binder/Status.h>
 #include <utils/StrongPointer.h>
 
+#include <ut_kvp.h>
+
 #include <atomic>
 #include <mutex>
 #include <string>
@@ -57,11 +59,10 @@ namespace firmwareupdate {
  * progress for valid sources, and sends exactly one terminal completion
  * callback. This virtual-device implementation does not alter firmware.
  *
- * Lifecycle outcome handling supports pre-validation, write, and
- * post-validation simulation stages. Control-plane scenario receipt, parsing,
- * persistence, and scenario selection are intentionally not implemented. Until
- * that integration exists, each accepted request snapshots the default success
- * scenario and follows the normal simulated lifecycle.
+ * Control-plane KVP configures pre-validation, write, and post-validation
+ * outcomes in memory only. Configuration replacement and update admission use
+ * the same mutex, so each accepted request receives an immutable snapshot.
+ * Invalid configuration is retained and reported after source validation.
  */
 class FirmwareUpdate final : public android::BinderService<FirmwareUpdate>, public BnFirmwareUpdate
 {
@@ -77,10 +78,7 @@ public:
 
     // PUBLIC_INTERFACE
     /**
-     * @brief Destroy the Firmware Update service after its active worker finishes.
-     *
-     * The service joins its owned lifecycle worker so no worker can access
-     * service synchronization state after the service is destroyed.
+     * @brief Destroy the Firmware Update service.
      */
     ~FirmwareUpdate() override;
 
@@ -127,12 +125,21 @@ public:
         const android::sp<IFirmwareUpdateListener>& listener,
         bool* _aidl_return) override;
 
+    // PUBLIC_INTERFACE
+    /**
+     * @brief Replace the scenario using a transient control-plane KVP payload.
+     * @param payload Full firmwareupdate command payload; never retained.
+     * @return True for a complete, compatible set_scenario command.
+     *
+     * Copies all required fields into owned memory. Missing or malformed fields,
+     * including a null payload, replace previous configuration with an actionable
+     * error. Active workers retain their original snapshots. No file is accessed.
+     */
+    bool configureScenario(ut_kvp_instance_t* payload);
+
 private:
     /**
      * @brief Simulation lifecycle boundary at which a terminal result is injected.
-     *
-     * This representation is worker-local until a separately approved
-     * control-plane integration supplies configured scenarios.
      */
     enum class SimulationStage
     {
@@ -144,16 +151,14 @@ private:
 
     /**
      * @brief Immutable worker snapshot of a simulated lifecycle outcome.
-     *
-     * No runtime source currently mutates this structure. Its presence keeps
-     * lifecycle handling explicit and allows a future control-plane component
-     * to provide a validated snapshot without changing callback sequencing.
+     * An error is retained independently of the selected lifecycle result.
      */
     struct SimulationScenario
     {
         SimulationStage stage{SimulationStage::NONE};
         FirmwareUpdateResult result{FirmwareUpdateResult::SUCCESS};
         std::string report;
+        std::string configurationError;
     };
 
     /**
@@ -184,8 +189,9 @@ private:
     static bool isValidScenario(const SimulationScenario& scenario);
 
     std::mutex m_mutex;
-    std::thread m_lifecycleWorker;
+    SimulationScenario m_scenario; // Protected by m_mutex; defaults to success.
     std::atomic<bool> m_updateInProgress{false};
+    std::thread m_lifecycleWorker; // Joined before reuse and during destruction.
 };
 
 } // namespace firmwareupdate

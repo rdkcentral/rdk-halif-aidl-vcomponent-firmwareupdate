@@ -20,12 +20,21 @@
 #include "utility/vcomponent_FirmwareUpdateHelper.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
+#include <iostream>
+#include <limits>
 #include <sstream>
 
 namespace vcomponent {
 namespace utility {
+
+namespace {
+constexpr uint16_t kDefaultControlPlanePort = 8087;
+} // namespace
 
 static inline bool isSpace(unsigned char c)
 {
@@ -60,6 +69,68 @@ std::optional<std::string> readFileToString(const std::string& path)
     std::ostringstream ss;
     ss << in.rdbuf();
     return ss.str();
+}
+
+void printUsage(const char* programName)
+{
+    std::cerr << "Usage: " << programName << " [--port <port_number>]" << std::endl;
+}
+
+bool parsePort(const char* value, uint16_t* port)
+{
+    if (value == nullptr || port == nullptr || *value == '\0')
+    {
+        return false;
+    }
+
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long parsedPort = std::strtoul(value, &end, 10);
+
+    if (errno != 0 || end == value || *end != '\0' || parsedPort == 0
+        || parsedPort > std::numeric_limits<uint16_t>::max())
+    {
+        return false;
+    }
+
+    *port = static_cast<uint16_t>(parsedPort);
+    return true;
+}
+
+bool parseArguments(int argc, char** argv, uint16_t* port)
+{
+    if (port == nullptr)
+    {
+        return false;
+    }
+
+    *port = kDefaultControlPlanePort;
+
+    for (int index = 1; index < argc; ++index)
+    {
+        const std::string argument(argv[index]);
+
+        if (argument == "--port")
+        {
+            if (index + 1 >= argc || !parsePort(argv[++index], port))
+            {
+                std::cerr << "Error: --port requires a value between 1 and 65535" << std::endl;
+                return false;
+            }
+            continue;
+        }
+
+        if (argument == "--help" || argument == "-h")
+        {
+            printUsage(argv[0]);
+            return false;
+        }
+
+        std::cerr << "Error: Unknown argument '" << argument << "'" << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace utility
