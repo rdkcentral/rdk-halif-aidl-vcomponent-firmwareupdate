@@ -44,7 +44,7 @@ FirmwareUpdateController::FirmwareUpdateController(
 }
 
 // PUBLIC_INTERFACE
-/** Replace in-memory configuration from required control-plane KVP fields; return validity. */
+/** Replace the injected terminal result from the control-plane KVP payload; return validity. */
 bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
 {
     // Serialize replacement with admission. No callback-owned data escapes.
@@ -80,71 +80,53 @@ bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
     };
 
     std::string command;
-    std::string name;
-    std::string stage;
     std::string result;
     if (readField("firmwareupdate.command", command)
-        && readField("firmwareupdate.params.name", name)
-        && readField("firmwareupdate.params.stage", stage)
-        && readField("firmwareupdate.params.final_result", result)
-        && readField("firmwareupdate.params.report", scenario.report))
+        && readField("firmwareupdate.result", result))
     {
         struct Outcome
         {
-            const char* name;
-            const char* stageName;
             const char* resultName;
             SimulationStage stage;
             FirmwareUpdateResult result;
         };
         static const Outcome outcomes[] = {
-            {"success", "pre_validation", "SUCCESS",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::SUCCESS},
-            {"general_error", "pre_validation", "ERROR_GENERAL",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_GENERAL},
-            {"file_open_fail", "pre_validation", "ERROR_FILE_OPEN_FAIL",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL},
-            {"invalid_image_type", "pre_validation", "ERROR_IMAGE_INVALID_TYPE",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE},
-            {"invalid_signature", "pre_validation", "ERROR_IMAGE_INVALID_SIGNATURE",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE},
-            {"invalid_size", "pre_validation", "ERROR_IMAGE_INVALID_SIZE",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE},
-            {"invalid_product", "pre_validation", "ERROR_IMAGE_INVALID_PRODUCT",
-                SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT},
-            {"write_failed", "write", "ERROR_FW_UPDATE_WRITE_FAILED",
-                SimulationStage::WRITE, FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED},
-            {"verify_failed", "post_validation", "ERROR_FW_UPDATE_VERIFY_FAILED",
-                SimulationStage::POST_VALIDATION, FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED},
-            {"verify_signature_failed", "post_validation", "ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED",
-                SimulationStage::POST_VALIDATION, FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED}
+            {"SUCCESS", SimulationStage::NONE, FirmwareUpdateResult::SUCCESS},
+            {"ERROR_GENERAL", SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_GENERAL},
+            {"ERROR_FILE_OPEN_FAIL", SimulationStage::PRE_VALIDATION,
+                FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL},
+            {"ERROR_IMAGE_INVALID_TYPE", SimulationStage::PRE_VALIDATION,
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE},
+            {"ERROR_IMAGE_INVALID_SIGNATURE", SimulationStage::PRE_VALIDATION,
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE},
+            {"ERROR_IMAGE_INVALID_SIZE", SimulationStage::PRE_VALIDATION,
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE},
+            {"ERROR_IMAGE_INVALID_PRODUCT", SimulationStage::PRE_VALIDATION,
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT},
+            {"ERROR_FW_UPDATE_WRITE_FAILED", SimulationStage::WRITE,
+                FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED},
+            {"ERROR_FW_UPDATE_VERIFY_FAILED", SimulationStage::POST_VALIDATION,
+                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED},
+            {"ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED", SimulationStage::POST_VALIDATION,
+                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED}
         };
 
-        if (command != "set_scenario")
+        if (command != "inject_firmware_update_result")
         {
             scenario.configurationError =
-                "Invalid firmwareupdate.command: expected set_scenario.";
+                "Invalid firmwareupdate.command: expected inject_firmware_update_result.";
         }
         else
         {
-            scenario.configurationError = "Unsupported firmwareupdate.params.name.";
+            scenario.configurationError = "Unsupported firmwareupdate.result.";
             for (const auto& outcome : outcomes)
             {
-                if (name != outcome.name)
+                if (result != outcome.resultName)
                     continue;
 
-                if (stage != outcome.stageName || result != outcome.resultName)
-                {
-                    scenario.configurationError =
-                        std::string("Incompatible scenario stage/final_result: expected ")
-                        + outcome.stageName + "/" + outcome.resultName + ".";
-                }
-                else
-                {
-                    scenario.stage = outcome.stage;
-                    scenario.result = outcome.result;
-                    scenario.configurationError.clear();
-                }
+                scenario.stage = outcome.stage;
+                scenario.result = outcome.result;
+                scenario.configurationError.clear();
                 break;
             }
         }
@@ -155,14 +137,14 @@ bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
     {
         // These identifiers have been validated against the supported outcomes.
         LOGF_INFO(
-            "%s: Control-plane scenario configured: command=set_scenario, "
-            "scenario=%s, stage=%s, final_result=%s.",
-            logPrefix, name.c_str(), stage.c_str(), result.c_str());
+            "%s: Control-plane result configured: "
+            "command=inject_firmware_update_result, result=%s.",
+            logPrefix, result.c_str());
     }
     else
     {
         LOGF_INFO(
-            "%s: Invalid control-plane scenario configuration retained: %s",
+            "%s: Invalid control-plane result configuration retained: %s",
             logPrefix, m_scenario.configurationError.c_str());
     }
     return m_scenario.configurationError.empty();
@@ -247,18 +229,18 @@ void FirmwareUpdateController::onMessage(
     {
         if (!controller->m_service->configureScenario(payload))
         {
-            LOGF_WARN("%s: Invalid scenario retained for subsequent updates.", logPrefix);
+            LOGF_WARN("%s: Invalid result configuration retained for subsequent updates.", logPrefix);
         }
         else
         {
-            LOGF_DEBUG("%s: Control-plane scenario command processed successfully.", logPrefix);
+            LOGF_DEBUG("%s: Control-plane result command processed successfully.", logPrefix);
         }
     }
     catch (...)
     {
         // Exceptions must not cross the C transport boundary. Invalidate any
-        // previous scenario so a failed command cannot silently reuse it.
-        LOGF_ERR("%s: Unable to process scenario command.", logPrefix);
+        // previous result so a failed command cannot silently reuse it.
+        LOGF_ERR("%s: Unable to process result command.", logPrefix);
         try
         {
             controller->m_service->configureScenario(nullptr);

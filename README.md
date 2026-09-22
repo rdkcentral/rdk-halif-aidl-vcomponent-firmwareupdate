@@ -1,8 +1,8 @@
 # rdk-halif-aidl-vcomponent-firmwareupdate
 
-The Firmware Update vComponent is a virtual implementation of the RDK HALIF FirmwareUpdate AIDL interface. It publishes an `IFirmwareUpdate` Binder service and simulates a firmware-update lifecycle for development and test environments. The component validates whether the supplied source path can be opened, emits deterministic listener callbacks, and can inject configured terminal outcomes through its control-plane endpoint.
+The Firmware Update vComponent is a virtual implementation of the RDK HALIF FirmwareUpdate AIDL interface. It publishes an `IFirmwareUpdate` Binder service and simulates an asynchronous firmware-update lifecycle for development and test environments.
 
-The component never copies, flashes, verifies, installs, activates, or persists firmware. It is a simulation service only.
+The component does not copy, flash, inspect, verify, install, activate, or persist firmware. It is a simulation service only.
 
 ## Contents
 
@@ -10,39 +10,45 @@ The component never copies, flashes, verifies, installs, activates, or persists 
 - [Build](#build)
 - [Run the Service](#run-the-service)
 - [Simulated Update Lifecycle](#simulated-update-lifecycle)
-- [Control-Plane Scenarios](#control-plane-scenarios)
+- [Control-Plane Result Injection](#control-plane-result-injection)
 - [Limitations](#limitations)
 
 ## Overview
 
-`RDKFirmwareUpdateService` registers the canonical service name supplied by the generated `IFirmwareUpdate` AIDL interface, then joins the Binder thread pool. It also starts a UT control-plane listener for `firmwareupdate` messages.
+`RDKFirmwareUpdateService` creates the `FirmwareUpdate` Binder service, starts a UT control-plane listener, registers the service using the canonical name returned by the generated `IFirmwareUpdate` AIDL interface, and joins the Binder thread pool.
 
-The service permits one asynchronous update request at a time. A request with a null listener is rejected as an invalid Binder invocation. If an update is already active, the Binder call completes successfully but returns `false` through the AIDL return value, and no new lifecycle worker or listener callbacks are created.
+The service permits one asynchronous update request at a time:
 
-For an admitted request, leading and trailing whitespace is removed from the source path before the worker begins. Empty or non-openable paths complete asynchronously with `ERROR_FILE_OPEN_FAIL` and do not receive progress callbacks.
+- A request with a null listener is rejected with an illegal-argument Binder exception.
+- A request with a null AIDL return pointer is rejected with a null-pointer Binder exception.
+- If an update is already active, the Binder call succeeds but returns `false` through the AIDL return value. No worker or callbacks are created for that request.
+- An admitted request returns `true` immediately and completes on a background worker.
+- Leading and trailing whitespace is removed from the supplied filename before the worker starts.
+
+Each accepted request captures the current injected control-plane result. Later control-plane messages do not alter a lifecycle that is already in progress.
 
 ## Build
 
 ### Prerequisites
 
-A local build requires Git, CMake, a C++17-capable compiler, and the dependencies retrieved by `build.sh`. The script builds the required Binder tooling and RDK HALIF FirmwareUpdate interfaces, prepares UT-Core and common headers, then configures, builds, and installs this component.
+A local build requires Git, CMake, and a C++17-capable compiler. The `build.sh` script obtains and builds the required RDK HALIF AIDL and Binder artifacts, prepares UT-Core and common headers, then configures, builds, and installs this component.
 
-The generated Binder SDK, HALIF headers, libraries, and UT control library are required by CMake. For sysroot-based builds, the corresponding Binder and HALIF artifacts must be available in the sysroot.
+For direct CMake use, the required Binder SDK, HALIF headers and libraries, UT control library, and common include directory must be supplied. The project CMake configuration recommends using `build.sh` unless building against a configured sysroot.
 
 ### Build Variables
 
-The build script accepts these optional environment variables:
+The build script recognizes these optional environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RDK_HALIF_AIDL_VERSION` | `main` | Branch or Git reference used when cloning `rdk-halif-aidl`. |
-| `VCOMPONENT` | `firmwareupdate` | HALIF component selected by the script. |
-| `VCOMPONENT_VERSION` | `0.2.0.0` | Firmware Update HALIF component version to build. |
-| `UT_CORE_VERSION` | Script-managed | UT-Core revision used by the build process. |
+| `RDK_HALIF_AIDL_VERSION` | `main` | Branch or Git reference to clone for `rdk-halif-aidl`. |
+| `VCOMPONENT` | `firmwareupdate` | HALIF component selected by the build script. |
+| `VCOMPONENT_VERSION` | `0.2.0.0` | Firmware Update HALIF component version. |
+| `HAL_DBG_LEVEL` | Unset | Set to `INFO` or `DEBUG` to enable the corresponding component logging level. |
 
 ### Build Commands
 
-From the repository root, build for Linux or ARM:
+From the component repository root:
 
 ```bash
 ./build.sh Target=linux
@@ -54,83 +60,105 @@ From the repository root, build for Linux or ARM:
 
 The script configures CMake in `build/`, produces the `RDKFirmwareUpdateService` executable, installs component artifacts below `build/out/`, and copies the generated FirmwareUpdate HALIF shared library into `build/`.
 
-To remove build output, use:
+To remove build output:
 
 ```bash
 ./build.sh clean
 ```
 
-To remove build output together with the checked-out HALIF and UT-Core directories, use:
+To remove build output along with the checked-out HALIF and UT-Core directories:
 
 ```bash
 ./build.sh dist_clean
 ```
 
+Use the following command to print build-script usage:
+
+```bash
+./build.sh help
+```
+
 ## Run the Service
 
-Start the service after the Binder service manager and the runtime libraries required by the staged build are available.
+Start the service after the Binder service manager and runtime libraries required by the build are available:
 
 ```bash
 ./build/RDKFirmwareUpdateService
 ```
 
-The control-plane endpoint listens on TCP port `8087` by default. Supply a different port with `--port`; valid values are decimal values from `1` through `65535`.
+The UT control-plane listener uses TCP port `8087` by default. Provide another port with `--port`; valid ports are decimal values from `1` through `65535`.
 
 ```bash
 ./build/RDKFirmwareUpdateService --port 8090
 ```
 
-Use `--help` or `-h` to print the command usage. Invalid arguments, including an invalid port, cause the service to exit with a nonzero status.
+The executable accepts `--help` and `-h` to print usage. Unknown arguments, missing port values, and invalid port values cause argument parsing to fail.
 
-At startup, the process initializes the control-plane listener, registers the Firmware Update Binder service under the canonical AIDL service name, starts the Binder thread pool, and remains in that thread pool until it is stopped.
+On successful startup, the process initializes the control-plane endpoint, registers the Firmware Update Binder service using the generated AIDL interface’s canonical service name, starts the Binder thread pool, and remains in that pool until stopped.
 
 ## Simulated Update Lifecycle
 
-Calls to `updateFirmwareFromFile` are handled asynchronously after admission. The service retains an immutable snapshot of the current control-plane scenario for each accepted request, so scenario changes do not affect an already active lifecycle.
+Calls to `updateFirmwareFromFile` execute asynchronously after admission. The service does not open or read the supplied file; an empty filename is the only filename-specific failure modeled by the implementation.
 
-Without an injected failure scenario, an admitted request produces this behavior:
+For an admitted request with a non-empty filename and no injected result, the lifecycle is:
 
-1. The service rejects an empty source path with `ERROR_FILE_OPEN_FAIL`.
-2. The service validates the configured scenario and evaluates pre-validation failures.
-3. The service emits progress callbacks at `0`, then every ten percent through `100`.
-4. The service evaluates write and post-validation failures.
-5. The service sends exactly one `onCompleted` callback with `SUCCESS` when no failure is selected.
+1. The service emits `onProgress(0)`.
+2. It emits `onProgress` at every ten-percent increment through `100`.
+3. It sends exactly one `onCompleted(SUCCESS, "Simulated firmware update completed successfully.")` callback.
 
-A write failure is evaluated immediately after the `50` percent callback. Source-path validation and configured failures complete through `onCompleted`; the source image contents are not read or processed beyond the component's simulated behavior.
+An empty filename completes asynchronously with:
 
-The listener callback forwarder included by this repository is a logging implementation and extension point. It records `onProgress` and `onCompleted` callbacks but does not bridge them to another middleware system.
+```text
+ERROR_FILE_OPEN_FAIL
+Unable to open firmware image file
+```
 
-## Control-Plane Scenarios
+No progress callbacks are emitted for an empty filename.
 
-The service listens for the `firmwareupdate` control-plane message and accepts a complete `set_scenario` payload. The scenario is stored in memory and is applied to subsequent admitted updates. A malformed payload replaces the prior configuration with an error, preventing a previous scenario from being silently reused.
+A write-failure injection is evaluated immediately after the `50` percent progress callback. Post-validation failures are evaluated after the `100` percent callback. The worker attempts one terminal `onCompleted` callback before releasing the active-request slot.
 
-A valid payload of control commands contains these fields:
+`FirmwareUpdateListenerForwarder` is a logging implementation and an extension point for middleware-specific callback forwarding. It records `onProgress` and `onCompleted` callbacks but does not bridge them to another event system.
 
-| Field | Purpose |
+## Control-Plane Result Injection
+
+The service registers a UT control-plane callback for the lowercase message key `firmwareupdate`. A control-plane message replaces the in-memory injected result for subsequent accepted update requests.
+
+The implementation requires the following string fields:
+
+| Field | Required value or purpose |
 |---|---|
-| `firmwareupdate.command` | Must be `set_scenario`. |
-| `firmwareupdate.params.name` | Selects the named scenario. |
-| `firmwareupdate.params.stage` | Identifies where the outcome is injected. |
-| `firmwareupdate.params.final_result` | Selects the terminal `FirmwareUpdateResult`. |
-| `firmwareupdate.params.report` | Provides the report string passed to `onCompleted`. |
+| `firmwareupdate.command` | Must be `inject_firmware_update_result`. |
+| `firmwareupdate.result` | Selects the simulated terminal `FirmwareUpdateResult`. |
 
-The following name, stage, and result combinations are supported:
+Supported result values and their simulated lifecycle locations are:
 
-| Scenario name | Stage | Final result |
-|---|---|---|
-| `success` | `pre_validation` | `SUCCESS` |
-| `general_error` | `pre_validation` | `ERROR_GENERAL` |
-| `file_open_fail` | `pre_validation` | `ERROR_FILE_OPEN_FAIL` |
-| `invalid_image_type` | `pre_validation` | `ERROR_IMAGE_INVALID_TYPE` |
-| `invalid_signature` | `pre_validation` | `ERROR_IMAGE_INVALID_SIGNATURE` |
-| `invalid_size` | `pre_validation` | `ERROR_IMAGE_INVALID_SIZE` |
-| `invalid_product` | `pre_validation` | `ERROR_IMAGE_INVALID_PRODUCT` |
-| `write_failed` | `write` | `ERROR_FW_UPDATE_WRITE_FAILED` |
-| `verify_failed` | `post_validation` | `ERROR_FW_UPDATE_VERIFY_FAILED` |
-| `verify_signature_failed` | `post_validation` | `ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED` |
+| Result | Simulated location |
+|---|---|
+| `SUCCESS` | Successful completion after progress reaches `100`. |
+| `ERROR_GENERAL` | Before progress callbacks. |
+| `ERROR_FILE_OPEN_FAIL` | Before progress callbacks. |
+| `ERROR_IMAGE_INVALID_TYPE` | Before progress callbacks. |
+| `ERROR_IMAGE_INVALID_SIGNATURE` | Before progress callbacks. |
+| `ERROR_IMAGE_INVALID_SIZE` | Before progress callbacks. |
+| `ERROR_IMAGE_INVALID_PRODUCT` | Before progress callbacks. |
+| `ERROR_FW_UPDATE_WRITE_FAILED` | Immediately after the `50` percent progress callback. |
+| `ERROR_FW_UPDATE_VERIFY_FAILED` | After progress reaches `100`. |
+| `ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED` | After progress reaches `100`. |
 
-The `stage` and `final_result` values must match the selected scenario exactly. The control-plane schema includes a representative `file_open_fail` scenario and the complete list of supported values.
+For example, the following payload configures an injected write failure:
+
+```yaml
+firmwareupdate:
+  command: inject_firmware_update_result
+  result: ERROR_FW_UPDATE_WRITE_FAILED
+```
+
+Malformed payloads, a different command value, or an unsupported result replace the prior configuration with an error. A later non-empty update request then completes with `ERROR_GENERAL` and the configuration-error message, rather than silently reusing an earlier injected result.
+
+The `SUCCESS` injection restores the default success outcome for subsequent accepted requests.
 
 ## Limitations
 
-This vComponent is not a firmware updater. It does not validate firmware content, inspect image signatures, verify product compatibility, write an image, or alter device firmware. The lifecycle stages and terminal outcomes are deterministic simulations intended to exercise Binder clients and control-plane-driven test cases.
+This vComponent is not a firmware updater. It does not validate source-file availability beyond treating an empty filename as a simulated open failure, and it does not read firmware bytes, validate image content or signatures, verify product compatibility, write an image, or alter device firmware.
+
+Its progress callbacks, lifecycle stages, and terminal outcomes are deterministic simulations intended to exercise Binder clients and control-plane-driven test cases.

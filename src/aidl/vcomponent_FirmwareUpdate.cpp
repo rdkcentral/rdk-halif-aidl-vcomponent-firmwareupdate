@@ -101,7 +101,7 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
 
     LOGF_DEBUG(
         "%s: updateFirmwareFromFile accepted for asynchronous execution "
-        "(scenarioStage=%d, scenarioResult=%d, hasConfigurationError=%s)",
+        "(injectedResultStage=%d, injectedResult=%d, hasConfigurationError=%s)",
         logPrefix,
         static_cast<int>(scenario.stage),
         static_cast<int>(scenario.result),
@@ -244,14 +244,15 @@ void FirmwareUpdate::runUpdateLifecycle(
     }
 
     // Source validation takes precedence over control-plane configuration.
-    // Invalid commands replace previous scenarios rather than selecting success.
+    // Invalid commands replace previous injected results rather than selecting
+    // success.
     if (!scenario.configurationError.empty() || !isValidScenario(scenario))
     {
-        LOGF_WARN("%s: Firmware-update scenario validation failed.", logPrefix);
+        LOGF_WARN("%s: Firmware-update injected-result validation failed.", logPrefix);
         complete(
             FirmwareUpdateResult::ERROR_GENERAL,
             scenario.configurationError.empty()
-                ? std::string("Invalid firmware-update simulation scenario.")
+                ? std::string("Invalid firmware-update injected result.")
                 : scenario.configurationError);
         return;
     }
@@ -362,7 +363,7 @@ void FirmwareUpdate::runUpdateLifecycle(
     LOGF_INFO("%s: Post-write signature validation passed.", logPrefix);
 
     LOGF_INFO("%s: Firmware-update lifecycle completed successfully.", logPrefix);
-    complete(FirmwareUpdateResult::SUCCESS, std::string());
+    complete(FirmwareUpdateResult::SUCCESS, "Simulated firmware update completed successfully.");
 }
 
 } // namespace firmwareupdate

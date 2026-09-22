@@ -59,10 +59,10 @@ namespace firmwareupdate {
  * progress for valid sources, and sends exactly one terminal completion
  * callback. This virtual-device implementation does not alter firmware.
  *
- * Control-plane KVP configures pre-validation, write, and post-validation
- * outcomes in memory only. Configuration replacement and update admission use
- * the same mutex, so each accepted request receives an immutable snapshot.
- * Invalid configuration is retained and reported after source validation.
+ * Control-plane KVP injects the terminal firmware-update result in memory
+ * only. Configuration replacement and update admission use the same mutex, so
+ * each accepted request receives an immutable snapshot. Invalid configuration
+ * is retained and reported after source validation.
  */
 class FirmwareUpdate final : public android::BinderService<FirmwareUpdate>, public BnFirmwareUpdate
 {
@@ -127,19 +127,20 @@ public:
 
     // PUBLIC_INTERFACE
     /**
-     * @brief Replace the scenario using a transient control-plane KVP payload.
+     * @brief Replace the injected terminal result from a transient control-plane KVP payload.
      * @param payload Full firmwareupdate command payload; never retained.
-     * @return True for a complete, compatible set_scenario command.
+     * @return True for a complete, compatible inject_firmware_update_result command.
      *
-     * Copies all required fields into owned memory. Missing or malformed fields,
-     * including a null payload, replace previous configuration with an actionable
-     * error. Active workers retain their original snapshots. No file is accessed.
+     * Copies the command and result into owned state. Missing, malformed, or
+     * unsupported values, including a null payload, replace previous
+     * configuration with an actionable error. Active workers retain their
+     * original snapshots. No file is accessed.
      */
     bool configureScenario(ut_kvp_instance_t* payload);
 
 private:
     /**
-     * @brief Simulation lifecycle boundary at which a terminal result is injected.
+     * @brief Simulation lifecycle boundary used for an injected terminal result.
      */
     enum class SimulationStage
     {
@@ -150,8 +151,8 @@ private:
     };
 
     /**
-     * @brief Immutable worker snapshot of a simulated lifecycle outcome.
-     * An error is retained independently of the selected lifecycle result.
+     * @brief Immutable worker snapshot of an injected lifecycle outcome.
+     * An error is retained independently of the selected terminal result.
      */
     struct SimulationScenario
     {
