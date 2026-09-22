@@ -127,8 +127,8 @@ The implementation requires the following string fields:
 
 | Field | Required value or purpose |
 |---|---|
-| `firmwareupdate.command` | Must be `inject_firmware_update_result`. |
-| `firmwareupdate.result` | Selects the simulated terminal `FirmwareUpdateResult`. |
+| `FirmwareUpdate.command` | Must be `inject_firmware_update_result`. |
+| `FirmwareUpdate.result` | Selects the simulated terminal `FirmwareUpdateResult`. |
 
 Supported result values and their simulated lifecycle locations are:
 
