@@ -21,8 +21,8 @@
 
 #include "common/logger.h"
 
+#include <algorithm>
 #include <cstring>
-#include <limits>
 #include <utility>
 #include <vector>
 
@@ -33,6 +33,7 @@ namespace firmwareupdate {
 
 namespace {
 constexpr const char* logPrefix = "[VDEVICE_FIRMWAREUPDATE]<FirmwareUpdateController>";
+constexpr size_t kMaxScenarioFieldSize = 4096;
 } // namespace
 
 // PUBLIC_INTERFACE
@@ -52,7 +53,8 @@ bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
     SimulationScenario scenario;
     const auto readField = [&](const char* key, std::string& value) {
         // ut_kvp_getStringField uses strncpy and may not terminate a truncated
-        // value. Grow the owned buffer rather than silently truncating reports.
+        // value. Grow the owned buffer only up to a bounded control-plane
+        // field size rather than allocating unbounded memory from TCP input.
         std::vector<char> buffer(256);
         for (;;)
         {
@@ -69,46 +71,57 @@ bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
                 value.assign(buffer.data());
                 return true;
             }
-            if (buffer.size() > std::numeric_limits<uint32_t>::max() / 2)
+            if (buffer.size() >= kMaxScenarioFieldSize)
             {
                 scenario.configurationError =
                     std::string("Scenario field exceeds KVP size limit: ") + key;
                 return false;
             }
-            buffer.resize(buffer.size() * 2);
+            buffer.resize(std::min(buffer.size() * 2, kMaxScenarioFieldSize));
         }
     };
 
     std::string command;
     std::string result;
-    if (readField("firmwareupdate.command", command)
-        && readField("firmwareupdate.result", result))
+    if (readField("FirmwareUpdate.command", command)
+        && readField("FirmwareUpdate.result", result))
     {
         struct Outcome
         {
             const char* resultName;
             SimulationStage stage;
             FirmwareUpdateResult result;
+            const char* report;
         };
         static const Outcome outcomes[] = {
-            {"SUCCESS", SimulationStage::NONE, FirmwareUpdateResult::SUCCESS},
-            {"ERROR_GENERAL", SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_GENERAL},
+            {"SUCCESS", SimulationStage::NONE, FirmwareUpdateResult::SUCCESS,
+                "Simulated firmware update completed successfully."},
+            {"ERROR_GENERAL", SimulationStage::PRE_VALIDATION, FirmwareUpdateResult::ERROR_GENERAL,
+                "Simulated general firmware update failure."},
             {"ERROR_FILE_OPEN_FAIL", SimulationStage::PRE_VALIDATION,
-                FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL},
+                FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
+                "Unable to open firmware image file."},
             {"ERROR_IMAGE_INVALID_TYPE", SimulationStage::PRE_VALIDATION,
-                FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE},
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_TYPE,
+                "Firmware image type validation failed."},
             {"ERROR_IMAGE_INVALID_SIGNATURE", SimulationStage::PRE_VALIDATION,
-                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE},
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIGNATURE,
+                "Firmware image signature validation failed."},
             {"ERROR_IMAGE_INVALID_SIZE", SimulationStage::PRE_VALIDATION,
-                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE},
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_SIZE,
+                "Firmware image size validation failed."},
             {"ERROR_IMAGE_INVALID_PRODUCT", SimulationStage::PRE_VALIDATION,
-                FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT},
+                FirmwareUpdateResult::ERROR_IMAGE_INVALID_PRODUCT,
+                "Firmware image product compatibility validation failed."},
             {"ERROR_FW_UPDATE_WRITE_FAILED", SimulationStage::WRITE,
-                FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED},
+                FirmwareUpdateResult::ERROR_FW_UPDATE_WRITE_FAILED,
+                "Simulated firmware image write failed."},
             {"ERROR_FW_UPDATE_VERIFY_FAILED", SimulationStage::POST_VALIDATION,
-                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED},
+                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_FAILED,
+                "Firmware image verification failed."},
             {"ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED", SimulationStage::POST_VALIDATION,
-                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED}
+                FirmwareUpdateResult::ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED,
+                "Firmware image signature verification failed."}
         };
 
         if (command != "inject_firmware_update_result")
@@ -126,6 +139,7 @@ bool FirmwareUpdate::configureScenario(ut_kvp_instance_t* payload)
 
                 scenario.stage = outcome.stage;
                 scenario.result = outcome.result;
+                scenario.report = outcome.report;
                 scenario.configurationError.clear();
                 break;
             }
@@ -191,7 +205,7 @@ bool FirmwareUpdateController::start()
         return false;
     }
 
-    char messageKey[] = "firmwareupdate";
+    char messageKey[] = "FirmwareUpdate";
     const auto status = UT_ControlPlane_RegisterCallbackOnMessage(
         m_controlPlane, messageKey, &FirmwareUpdateController::onMessage, this);
     if (status != UT_CONTROL_PLANE_STATUS_OK)

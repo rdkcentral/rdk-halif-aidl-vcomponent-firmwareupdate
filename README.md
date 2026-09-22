@@ -44,7 +44,7 @@ The build script recognizes these optional environment variables:
 | `RDK_HALIF_AIDL_VERSION` | `main` | Branch or Git reference to clone for `rdk-halif-aidl`. |
 | `VCOMPONENT` | `firmwareupdate` | HALIF component selected by the build script. |
 | `VCOMPONENT_VERSION` | `0.2.0.0` | Firmware Update HALIF component version. |
-| `HAL_DBG_LEVEL` | Unset | Set to `INFO` or `DEBUG` to enable the corresponding component logging level. |
+| `HAL_DBG_LEVEL=INFO` / `HAL_DBG_LEVEL=DEBUG` (argument) | Unset | Pass as a build-script argument to enable the corresponding component logging level.  |
 
 ### Build Commands
 
@@ -144,6 +144,8 @@ Supported result values and their simulated lifecycle locations are:
 | `ERROR_FW_UPDATE_WRITE_FAILED` | Immediately after the `50` percent progress callback. |
 | `ERROR_FW_UPDATE_VERIFY_FAILED` | After progress reaches `100`. |
 | `ERROR_FW_UPDATE_VERIFY_SIGNATURE_FAILED` | After progress reaches `100`. |
+
+Each supported injected failure includes a default human-readable report in its terminal `onCompleted` callback. The report identifies the simulated failure category; callers do not supply a report in the control-plane payload.
 
 For example, the following payload configures an injected write failure:
 
