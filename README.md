@@ -121,7 +121,7 @@ A write-failure injection is evaluated immediately after the `50` percent progre
 
 ## Control-Plane Result Injection
 
-The service registers a UT control-plane callback for the lowercase message key `firmwareupdate`. A control-plane message replaces the in-memory injected result for subsequent accepted update requests.
+The service registers a UT control-plane callback for the lowercase message key `FirmwareUpdate`. A control-plane message replaces the in-memory injected result for subsequent accepted update requests.
 
 The implementation requires the following string fields:
 
@@ -150,7 +150,7 @@ Each supported injected failure includes a default human-readable report in its 
 For example, the following payload configures an injected write failure:
 
 ```yaml
-firmwareupdate:
+FirmwareUpdate:
   command: inject_firmware_update_result
   result: ERROR_FW_UPDATE_WRITE_FAILED
 ```
