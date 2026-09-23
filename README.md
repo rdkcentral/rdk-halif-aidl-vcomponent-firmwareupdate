@@ -98,22 +98,22 @@ On successful startup, the process initializes the control-plane endpoint, regis
 
 ## Simulated Update Lifecycle
 
-Calls to `updateFirmwareFromFile` execute asynchronously after admission. The service does not open or read the supplied file; an empty filename is the only filename-specific failure modeled by the implementation.
+Calls to `updateFirmwareFromFile` execute asynchronously after admission. The background worker trims the supplied path and verifies that the firmware image can be opened. It does not read, inspect, or copy firmware contents.
 
-For an admitted request with a non-empty filename and no injected result, the lifecycle is:
+For an admitted request with an openable filename and no injected result, the lifecycle is:
 
 1. The service emits `onProgress(0)`.
 2. It emits `onProgress` at every ten-percent increment through `100`.
 3. It sends exactly one `onCompleted(SUCCESS, "Simulated firmware update completed successfully.")` callback.
 
-An empty filename completes asynchronously with:
+An empty or non-openable filename—including a missing file—completes asynchronously with:
 
 ```text
 ERROR_FILE_OPEN_FAIL
 Unable to open firmware image file
 ```
 
-No progress callbacks are emitted for an empty filename.
+No progress callbacks are emitted when source-file validation fails. Source-file validation takes precedence over control-plane result injection.
 
 A write-failure injection is evaluated immediately after the `50` percent progress callback. Post-validation failures are evaluated after the `100` percent callback. The worker attempts one terminal `onCompleted` callback before releasing the active-request slot.
 
@@ -155,12 +155,12 @@ firmwareupdate:
   result: ERROR_FW_UPDATE_WRITE_FAILED
 ```
 
-Malformed payloads, a different command value, or an unsupported result replace the prior configuration with an error. A later non-empty update request then completes with `ERROR_GENERAL` and the configuration-error message, rather than silently reusing an earlier injected result.
+Malformed payloads, a different command value, or an unsupported result replace the prior configuration with an error. A later request with an openable source file then completes with `ERROR_GENERAL` and the configuration-error message, rather than silently reusing an earlier injected result.
 
 The `SUCCESS` injection restores the default success outcome for subsequent accepted requests.
 
 ## Limitations
 
-This vComponent is not a firmware updater. It does not validate source-file availability beyond treating an empty filename as a simulated open failure, and it does not read firmware bytes, validate image content or signatures, verify product compatibility, write an image, or alter device firmware.
+This vComponent is not a firmware updater. It validates only whether the source path can be opened; it does not read firmware bytes, validate image content or signatures, verify product compatibility, write an image, or alter device firmware.
 
 Its progress callbacks, lifecycle stages, and terminal outcomes are deterministic simulations intended to exercise Binder clients and control-plane-driven test cases.

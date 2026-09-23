@@ -243,6 +243,19 @@ void FirmwareUpdate::runUpdateLifecycle(
         return;
     }
 
+    std::ifstream firmwareImage(filename);
+    if (!firmwareImage.is_open())
+    {
+        LOGF_WARN(
+            "%s: Source file open validation failed: unable to open firmware image '%s'.",
+            logPrefix,
+            filename.c_str());
+        complete(
+            FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
+            std::string("Unable to open firmware image file"));
+        return;
+    }
+
     // Source validation takes precedence over control-plane configuration.
     // Invalid commands replace previous injected results rather than selecting
     // success.
