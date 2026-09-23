@@ -25,9 +25,11 @@
 #include <binder/Status.h>
 
 #include <chrono>
-#include <fstream>
+#include <fcntl.h>
 #include <system_error>
+#include <sys/stat.h>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 
 namespace com {
@@ -243,11 +245,11 @@ void FirmwareUpdate::runUpdateLifecycle(
         return;
     }
 
-    std::ifstream firmwareImage(filename);
-    if (!firmwareImage.is_open())
+    struct stat fileStatus {};
+    if (stat(filename.c_str(), &fileStatus) != 0 || !S_ISREG(fileStatus.st_mode))
     {
         LOGF_WARN(
-            "%s: Source file open validation failed: unable to open firmware image '%s'.",
+            "%s: Source file open validation failed: firmware image '%s' is unavailable or not a regular file.",
             logPrefix,
             filename.c_str());
         complete(
@@ -255,6 +257,28 @@ void FirmwareUpdate::runUpdateLifecycle(
             std::string("Unable to open firmware image file"));
         return;
     }
+
+    const int firmwareImageFd = open(filename.c_str(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (firmwareImageFd < 0
+        || fstat(firmwareImageFd, &fileStatus) != 0
+        || !S_ISREG(fileStatus.st_mode))
+    {
+        if (firmwareImageFd >= 0)
+        {
+            close(firmwareImageFd);
+        }
+
+        LOGF_WARN(
+            "%s: Source file open validation failed: unable to open regular firmware image '%s'.",
+            logPrefix,
+            filename.c_str());
+        complete(
+            FirmwareUpdateResult::ERROR_FILE_OPEN_FAIL,
+            std::string("Unable to open firmware image file"));
+        return;
+    }
+
+    close(firmwareImageFd);
 
     // Source validation takes precedence over control-plane configuration.
     // Invalid commands replace previous injected results rather than selecting

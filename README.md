@@ -98,22 +98,22 @@ On successful startup, the process initializes the control-plane endpoint, regis
 
 ## Simulated Update Lifecycle
 
-Calls to `updateFirmwareFromFile` execute asynchronously after admission. The background worker trims the supplied path and verifies that the firmware image can be opened. It does not read, inspect, or copy firmware contents.
+Calls to `updateFirmwareFromFile` execute asynchronously after admission. The background worker trims the supplied path and verifies that it resolves to a regular file that can be opened without blocking. FIFOs, directories, devices, sockets, and other special files are rejected. The component does not read, inspect, or copy firmware contents.
 
-For an admitted request with an openable filename and no injected result, the lifecycle is:
+For an admitted request with an openable regular-file path and no injected result, the lifecycle is:
 
 1. The service emits `onProgress(0)`.
 2. It emits `onProgress` at every ten-percent increment through `100`.
 3. It sends exactly one `onCompleted(SUCCESS, "Simulated firmware update completed successfully.")` callback.
 
-An empty or non-openable filename—including a missing file—completes asynchronously with:
+An empty, missing, non-openable, or non-regular-file path completes asynchronously with:
 
 ```text
 ERROR_FILE_OPEN_FAIL
 Unable to open firmware image file
 ```
 
-No progress callbacks are emitted when source-file validation fails. Source-file validation takes precedence over control-plane result injection.
+No progress callbacks are emitted when source-file validation fails. Validation uses a non-blocking open, so a FIFO cannot leave the lifecycle worker waiting for a writer. Source-file validation takes precedence over control-plane result injection.
 
 A write-failure injection is evaluated immediately after the `50` percent progress callback. Post-validation failures are evaluated after the `100` percent callback. The worker attempts one terminal `onCompleted` callback before releasing the active-request slot.
 
@@ -121,7 +121,7 @@ A write-failure injection is evaluated immediately after the `50` percent progre
 
 ## Control-Plane Result Injection
 
-The service registers a UT control-plane callback for the lowercase message key `FirmwareUpdate`. A control-plane message replaces the in-memory injected result for subsequent accepted update requests.
+The service registers a UT control-plane callback for the case-sensitive message key `FirmwareUpdate`. A control-plane message replaces the in-memory injected result for subsequent accepted update requests.
 
 The implementation requires the following string fields:
 
@@ -155,12 +155,12 @@ FirmwareUpdate:
   result: ERROR_FW_UPDATE_WRITE_FAILED
 ```
 
-Malformed payloads, a different command value, or an unsupported result replace the prior configuration with an error. A later request with an openable source file then completes with `ERROR_GENERAL` and the configuration-error message, rather than silently reusing an earlier injected result.
+Malformed payloads, a different command value, or an unsupported result replace the prior configuration with an error. A later request with an openable regular source file then completes with `ERROR_GENERAL` and the configuration-error message, rather than silently reusing an earlier injected result.
 
 The `SUCCESS` injection restores the default success outcome for subsequent accepted requests.
 
 ## Limitations
 
-This vComponent is not a firmware updater. It validates only whether the source path can be opened; it does not read firmware bytes, validate image content or signatures, verify product compatibility, write an image, or alter device firmware.
+This vComponent is not a firmware updater. It validates only that the source path is a regular file which can be opened without blocking; it does not read firmware bytes, validate image content or signatures, verify product compatibility, write an image, or alter device firmware.
 
 Its progress callbacks, lifecycle stages, and terminal outcomes are deterministic simulations intended to exercise Binder clients and control-plane-driven test cases.
