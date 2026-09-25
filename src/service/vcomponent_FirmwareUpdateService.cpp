@@ -38,7 +38,13 @@ constexpr const char* logPrefix = "[VDEVICE_FIRMWAREUPDATE]<FirmwareUpdateServic
 int main(int argc, char** argv)
 {
     uint16_t controlPlanePort = 0;
-    if (!vcomponent::utility::parseArguments(argc, argv, &controlPlanePort))
+    const auto parseResult = vcomponent::utility::parseArguments(argc, argv, &controlPlanePort);
+    if (parseResult == vcomponent::utility::ArgumentParseResult::HelpRequested)
+    {
+        vcomponent::utility::printUsage(argv[0]);
+        return 0;
+    }
+    if (parseResult == vcomponent::utility::ArgumentParseResult::InvalidArguments)
     {
         vcomponent::utility::printUsage(argv[0]);
         return 1;

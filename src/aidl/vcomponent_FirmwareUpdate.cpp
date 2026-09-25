@@ -80,9 +80,11 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
         logPrefix,
         trimmedFilename.size());
 
-    // Admission and release are both protected so only one worker can own the
-    // simulated update lifecycle at any time.
+    // Transfer ownership of any completed worker while holding the mutex, but
+    // join it only after releasing the mutex. The worker acquires this mutex
+    // while releasing its active slot, so joining while locked can deadlock.
     SimulationScenario scenario;
+    std::thread completedWorker;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_updateInProgress.load())
@@ -93,12 +95,16 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
 
         if (m_lifecycleWorker.joinable())
         {
-            m_lifecycleWorker.join();
+            completedWorker = std::move(m_lifecycleWorker);
         }
-
 
         scenario = m_scenario;
         m_updateInProgress.store(true);
+    }
+
+    if (completedWorker.joinable())
+    {
+        completedWorker.join();
     }
 
     LOGF_DEBUG(
@@ -113,13 +119,15 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
     {
         // Capture all request-specific state by value. The worker retains this
         // state and the service until it attempts terminal completion.
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_lifecycleWorker = std::thread(
+        std::thread lifecycleWorker(
             &FirmwareUpdate::runUpdateLifecycle,
             this,
             trimmedFilename,
             listener,
             scenario);
+
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lifecycleWorker = std::move(lifecycleWorker);
     }
     catch (const std::system_error& error)
     {

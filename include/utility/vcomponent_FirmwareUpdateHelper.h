@@ -21,11 +21,10 @@
 
 /**
  * @file vcomponent_FirmwareUpdateHelper.h
- * @brief String and file-reading helpers used by the Firmware Update service.
+ * @brief String and command-line helpers used by the Firmware Update service.
  */
 
 #include <cstdint>
-#include <optional>
 #include <string>
 
 namespace vcomponent {
@@ -48,18 +47,6 @@ std::string trim(const std::string& s);
 
 // PUBLIC_INTERFACE
 /**
- * @brief Read an entire file into a string.
- *
- * The file is opened in binary mode so its contents are returned unchanged.
- *
- * @param[in] path Path of the file to read.
- * @return The complete file contents when the file can be opened and read, or
- * @c std::nullopt when it cannot be opened.
- */
-std::optional<std::string> readFileToString(const std::string& path);
-
-// PUBLIC_INTERFACE
-/**
  * @brief Print Firmware Update service command-line usage.
  *
  * @param[in] programName Name used to invoke the service executable.
@@ -77,6 +64,16 @@ void printUsage(const char* programName);
  */
 bool parsePort(const char* value, uint16_t* port);
 
+/**
+ * @brief Outcome of parsing service command-line arguments.
+ */
+enum class ArgumentParseResult
+{
+    Success,
+    HelpRequested,
+    InvalidArguments
+};
+
 // PUBLIC_INTERFACE
 /**
  * @brief Parse Firmware Update service command-line arguments.
@@ -87,9 +84,10 @@ bool parsePort(const char* value, uint16_t* port);
  * @param[in] argc Number of command-line arguments.
  * @param[in] argv Command-line argument vector.
  * @param[out] port Parsed or defaulted control-plane port.
- * @return @c true when the arguments are valid; otherwise @c false.
+ * @return Success for valid arguments, HelpRequested for a help flag, or
+ * InvalidArguments for an error. The caller handles usage output.
  */
-bool parseArguments(int argc, char** argv, uint16_t* port);
+ArgumentParseResult parseArguments(int argc, char** argv, uint16_t* port);
 
 } // namespace utility
 } // namespace vcomponent

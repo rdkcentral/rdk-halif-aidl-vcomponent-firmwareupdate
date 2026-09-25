@@ -24,10 +24,8 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <limits>
-#include <sstream>
 
 namespace vcomponent {
 namespace utility {
@@ -58,19 +56,6 @@ std::string trim(const std::string& s)
     return std::string(begin, end);
 }
 
-std::optional<std::string> readFileToString(const std::string& path)
-{
-    std::ifstream in(path, std::ios::in | std::ios::binary);
-    if (!in)
-    {
-        return std::nullopt;
-    }
-
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
 void printUsage(const char* programName)
 {
     std::cerr << "Usage: " << programName << " [--port <port_number>]" << std::endl;
@@ -97,11 +82,11 @@ bool parsePort(const char* value, uint16_t* port)
     return true;
 }
 
-bool parseArguments(int argc, char** argv, uint16_t* port)
+ArgumentParseResult parseArguments(int argc, char** argv, uint16_t* port)
 {
     if (port == nullptr)
     {
-        return false;
+        return ArgumentParseResult::InvalidArguments;
     }
 
     *port = kDefaultControlPlanePort;
@@ -115,22 +100,21 @@ bool parseArguments(int argc, char** argv, uint16_t* port)
             if (index + 1 >= argc || !parsePort(argv[++index], port))
             {
                 std::cerr << "Error: --port requires a value between 1 and 65535" << std::endl;
-                return false;
+                return ArgumentParseResult::InvalidArguments;
             }
             continue;
         }
 
         if (argument == "--help" || argument == "-h")
         {
-            printUsage(argv[0]);
-            return false;
+            return ArgumentParseResult::HelpRequested;
         }
 
         std::cerr << "Error: Unknown argument '" << argument << "'" << std::endl;
-        return false;
+        return ArgumentParseResult::InvalidArguments;
     }
 
-    return true;
+    return ArgumentParseResult::Success;
 }
 
 } // namespace utility
