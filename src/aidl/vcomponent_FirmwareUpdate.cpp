@@ -119,15 +119,15 @@ android::binder::Status FirmwareUpdate::updateFirmwareFromFile(
     {
         // Capture all request-specific state by value. The worker retains this
         // state and the service until it attempts terminal completion.
-        std::thread lifecycleWorker(
-            &FirmwareUpdate::runUpdateLifecycle,
-            this,
-            trimmedFilename,
-            listener,
-            scenario);
-
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_lifecycleWorker = std::move(lifecycleWorker);
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_lifecycleWorker = std::thread(
+                &FirmwareUpdate::runUpdateLifecycle,
+                this,
+                trimmedFilename,
+                listener,
+                scenario);
+        }
     }
     catch (const std::system_error& error)
     {
