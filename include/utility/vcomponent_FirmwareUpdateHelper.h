@@ -21,10 +21,10 @@
 
 /**
  * @file vcomponent_FirmwareUpdateHelper.h
- * @brief String and file-reading helpers used by the Firmware Update service.
+ * @brief String and command-line helpers used by the Firmware Update service.
  */
 
-#include <optional>
+#include <cstdint>
 #include <string>
 
 namespace vcomponent {
@@ -47,15 +47,47 @@ std::string trim(const std::string& s);
 
 // PUBLIC_INTERFACE
 /**
- * @brief Read an entire file into a string.
+ * @brief Print Firmware Update service command-line usage.
  *
- * The file is opened in binary mode so its contents are returned unchanged.
- *
- * @param[in] path Path of the file to read.
- * @return The complete file contents when the file can be opened and read, or
- * @c std::nullopt when it cannot be opened.
+ * @param[in] programName Name used to invoke the service executable.
  */
-std::optional<std::string> readFileToString(const std::string& path);
+void printUsage(const char* programName);
+
+// PUBLIC_INTERFACE
+/**
+ * @brief Parse a numeric TCP port value.
+ *
+ * @param[in] value Null-terminated decimal port value.
+ * @param[out] port Parsed port number when parsing succeeds.
+ * @return @c true when @p value is a complete decimal value in the range
+ * 1 through 65535; otherwise @c false.
+ */
+bool parsePort(const char* value, uint16_t* port);
+
+/**
+ * @brief Outcome of parsing service command-line arguments.
+ */
+enum class ArgumentParseResult
+{
+    Success,
+    HelpRequested,
+    InvalidArguments
+};
+
+// PUBLIC_INTERFACE
+/**
+ * @brief Parse Firmware Update service command-line arguments.
+ *
+ * Supports @c --port <port_number> and @c --help / @c -h. The control-plane
+ * port defaults to 8087 when no port argument is supplied.
+ *
+ * @param[in] argc Number of command-line arguments.
+ * @param[in] argv Command-line argument vector.
+ * @param[out] port Parsed or defaulted control-plane port.
+ * @return Success for valid arguments, HelpRequested for a help flag, or
+ * InvalidArguments for an error. The caller handles usage output.
+ */
+ArgumentParseResult parseArguments(int argc, char** argv, uint16_t* port);
 
 } // namespace utility
 } // namespace vcomponent
