@@ -35,6 +35,31 @@ A local build requires Git, CMake, and a C++17-capable compiler. The `build.sh` 
 
 For direct CMake use, the required Binder SDK, HALIF headers and libraries, UT control library, and common include directory must be supplied. The project CMake configuration recommends using `build.sh` unless building against a configured sysroot.
 
+### Clone the Repository
+
+```bash
+git clone https://github.com/rdkcentral/rdk-halif-aidl-vcomponent-firmwareupdate.git
+
+cd rdk-halif-aidl-vcomponent-firmwareupdate
+```
+
+### Environment variables
+
+The build is driven by `./build.sh` in this repository. It uses, or defaults
+to, the following environment variables:
+
+- `UT_CORE_VERSION`: Specific version of UT-Core to build. If not set, the
+  script checks out the latest tag.
+- `RDK_HALIF_AIDL_VERSION`: Git ref used if the script must clone
+  `rdk-halif-aidl`. The script defaults to `main`.
+
+Example:
+
+```bash
+export UT_CORE_VERSION=5.1.0
+export RDK_HALIF_AIDL_VERSION=0.22.0
+```
+
 ### Build Variables
 
 The build script recognizes these optional environment variables:
